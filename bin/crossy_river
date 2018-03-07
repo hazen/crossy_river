@@ -1,3 +1,36 @@
 #!/usr/bin/env bash
-echo $PWD
-erl -noinput -s crossy_river main -- a b c stop -s init stop -pa _build/default/lib/crossy_river/ebin
+
+export SOLVE=false
+export REPLAY="<nofile>"
+export CUSTOM="<nofile>"
+while getopts "c:r:sh" OPT; do
+    case $OPT in
+        c)
+          CUSTOM="debug_on"
+          ;;
+        r)
+          REPLAY=$OPTARG
+          ;;
+        s)
+          SOLVE=true
+          ;;
+        h)
+          echo "Usage:"
+          echo "$0 -r <replay_file>"
+          echo "$0 -c <custom_rules_file>"
+          echo "$0 -s (to solve)"
+          exit 1
+          ;;
+        \?)
+          exit 1
+          ;;
+       :)
+          echo "Option -$OPTARG requires an argument" >&2
+          exit 1
+          ;;
+   esac
+done
+
+# Always run from the bin directory
+cd "${0%/*}"
+erl -noinput -s crossy_river main -- "$CUSTOM" "$REPLAY" $SOLVE -s init stop -pa ../_build/default/lib/crossy_river/ebin
