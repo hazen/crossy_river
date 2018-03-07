@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo $PWD
+erl -noinput -s crossy_river main -- a b c stop -s init stop -pa _build/default/lib/crossy_river/ebin
