@@ -31,6 +31,5 @@ while getopts "c:r:sh" OPT; do
    esac
 done
 
-# Always run from the bin directory
-cd "${0%/*}"
-erl -noinput -s crossy_river main -- "$REPLAY" "$CUSTOM" $SOLVE -s init stop -pa ../_build/default/lib/crossy_river/ebin
+BIN_DIR="${0%/*}"
+erl -noinput -s crossy_river main -- "$REPLAY" "$CUSTOM" $SOLVE -s init stop -pa "$BIN_DIR/../_build/default/lib/crossy_river/ebin"

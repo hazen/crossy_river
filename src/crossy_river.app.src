@@ -8,7 +8,7 @@
     stdlib
    ]},
   {env,[]},
-  {modules, []},
+  {modules, [crossy_river_statem]},
 
   {maintainers, []},
   {licenses, ["Apache 2.0"]},
