@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
 export SOLVE=false
-export REPLAY="<nofile>"
-export CUSTOM="<nofile>"
+export REPLAY="<default>"
+export CUSTOM="<default>"
 while getopts "c:r:sh" OPT; do
     case $OPT in
         c)
-          CUSTOM="debug_on"
+          CUSTOM=$OPTARG
           ;;
         r)
           REPLAY=$OPTARG
@@ -33,4 +33,4 @@ done
 
 # Always run from the bin directory
 cd "${0%/*}"
-erl -noinput -s crossy_river main -- "$CUSTOM" "$REPLAY" $SOLVE -s init stop -pa ../_build/default/lib/crossy_river/ebin
+erl -noinput -s crossy_river main -- "$REPLAY" "$CUSTOM" $SOLVE -s init stop -pa ../_build/default/lib/crossy_river/ebin

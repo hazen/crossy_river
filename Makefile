@@ -13,5 +13,8 @@ clean:
 test: compile
 	$(REBAR) eunit
 
+dialyze: compile
+	$(REBAR) dialyzer
+
 rel: compile
 	$(REBAR) release
