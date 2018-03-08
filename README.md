@@ -76,3 +76,27 @@ This allows for completely different scenarios to be attempted.
 Finally the `-s` flag means to allow the program to successfully move everything
 from the left riverbank to the other successfully, i.e., nothing gets eaten and
 the attempted series of moves is returned.
+
+Examples
+-------
+To test out some of the above configurations, you can try these:
+- Partial solution
+```bash
+$ bin/crossy_river -r samples/replay1
+```
+- Item is eaten
+```bash
+$ bin/crossy_river -r samples/replay2
+```
+- Successful crossing
+```bash
+$ bin/crossy_river -r samples/replay3
+```
+- Successful crossing with a standard customization file
+```bash
+$ bin/crossy_river -r samples/replay3 -c samples/custom1
+```
+- Item is eaten with a modified customization file
+```bash
+$ bin/crossy_river -r samples/replay4 -c samples/custom2
+```

@@ -15,7 +15,8 @@
 -else.
 -export([
   start_link/0,
-  replay_move/0
+  replay_move/0,
+  solve/0
 ]).
 -endif.
 
@@ -27,6 +28,7 @@
   left_bank/3,
   right_bank/3,
   complete/3,
+  eaten/3,
   handle_event/4,
   terminate/3,
   code_change/4
@@ -52,9 +54,12 @@
 start_link() ->
   gen_statem:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+-spec(replay_move() -> ok).
 replay_move() ->
   gen_statem:cast(?SERVER, move).
 
+solve() ->
+  gen_statem:cast(?SERVER, solve).
 
 %%%===================================================================
 %%% gen_statem callbacks
@@ -72,11 +77,17 @@ replay_move() ->
 -spec(init(gen_statem:state()) -> {ok, gen_statem:state_name(), gen_statem:state()}).
 init([]) ->
   InitialData = application:get_env(?APP, initial_state, #state{}),
+  %% Start on the correct bank based on the location of the Farmer
   InitialState = case string:str(InitialData#state.left_bank, "f") > 0 of
     true -> left_bank;
     _ -> right_bank
   end,
-  {ok, InitialState, InitialData}.
+  %% Clean out any replay moves if we are in solve mode
+  InitialMoves = case InitialData#state.solve of
+                   true -> [];
+                   _ -> InitialData#state.moves
+                 end,
+  {ok, InitialState, InitialData#state{moves = InitialMoves}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -127,22 +138,39 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %% @end
 %%--------------------------------------------------------------------
 left_bank(cast, move, Data) ->
-  io:format("Welcome to the Left Bank~n"),
+  {NextStateName, NewData} = do_move(Data),
+  io:format("~p ~p~n", [NextStateName, NewData]),
+  replay_move(),
+  {next_state, NextStateName, NewData};
+left_bank(cast, solve, Data) ->
   {NextStateName, NewData} = do_move(Data),
   io:format("~p ~p~n", [NextStateName, NewData]),
   replay_move(),
   {next_state, NextStateName, NewData}.
 
 right_bank(cast, move, Data) ->
-  io:format("Welcome to the Right Bank~n"),
+  {NextStateName, NewData} = do_move(Data),
+  io:format("~p ~p~n", [NextStateName, NewData]),
+  replay_move(),
+  {next_state, NextStateName, NewData};
+right_bank(cast, solve, Data) ->
   {NextStateName, NewData} = do_move(Data),
   io:format("~p ~p~n", [NextStateName, NewData]),
   replay_move(),
   {next_state, NextStateName, NewData}.
 
+eaten(cast, move, Data) ->
+  print_river(Data),
+  {next_state, eaten, Data};
+eaten(cast, solve, Data) ->
+  print_river(Data),
+  {next_state, eaten, Data}.
+
 complete(cast, move, Data) ->
   print_river(Data),
-  application:stop(?APP),
+  {next_state, complete, Data};
+complete(cast, solve, Data) ->
+  print_river(Data),
   {next_state, complete, Data}.
 
 %%--------------------------------------------------------------------
@@ -212,25 +240,39 @@ do_move(
       [] ->
         {complete, Data};
       Moves when is_list(Moves) ->
-        {Next, NewLeft, NewRight, Rest} = cross_river(Left, Right, Moves),
-        {Next, Data#state{
-          left_bank = NewLeft,
-          right_bank = NewRight,
-          moves = Rest
-        }}
+        cross_river(Left, Right, Data)
     end,
   {NextState, NewData}.
 
-cross_river(Left, Right, [Move|Rest]) ->
-  case string:str(Move, "<") > 0 of
+cross_river(Left, Right, #state{moves = [Move|Rest]} = Data) ->
+  {LeftBank, RightBank, Eaten, NewState} = case string:str(Move, "<") > 0 of
     true ->
       Items = Move -- "<",
-      {left_bank, Left ++ Items, Right -- Items, Rest};
+      determine_new_state(Left ++ Items, Right -- Items, Data, left_bank);
     _ ->
       Items = Move -- ">",
-      {right_bank, Left -- Items, Right ++ Items, Rest}
-  end.
+      determine_new_state(Left -- Items, Right ++ Items, Data, right_bank)
+  end,
+  {NewState, Data#state{
+    left_bank = LeftBank,
+    right_bank = RightBank,
+    eaten = Eaten,
+    moves = Rest
+  }}.
 
+-spec(determine_new_state(Left :: list(),
+    Right :: list(),
+    Data :: #state{},
+    Default :: gen_statem:state()) -> {list(), list(), list(), gen_statem:state()}).
+determine_new_state(Left, Right, Data, Default) ->
+  Eaten = check_anything_eaten(Left, Data) ++ check_anything_eaten(Right, Data),
+  {Left, Right, Eaten,
+    case Eaten of
+      [] -> Default;
+      _ -> eaten
+    end}.
+
+-spec(check_anything_eaten(list(), #state{}) -> list()).
 check_anything_eaten(Items,
     #state{eaters = Eaters,
            names = Names}) ->
@@ -250,5 +292,5 @@ print_river(
   io:format("~s~~~s~n", [Left, Right]),
   case Eaten of
     [] -> ok;
-    Eaten -> io:format("~s was eaten.", [Eaten])
+    Eaten -> io:format("~s was eaten.~n", [Eaten])
   end.
