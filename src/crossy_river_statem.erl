@@ -10,14 +10,19 @@
 -behaviour(gen_statem).
 
 %% API
--export([start_link/0]).
+-export([
+  start_link/0,
+  replay_move/0
+]).
 
 %% gen_statem callbacks
 -export([
   init/1,
   callback_mode/0,
   format_status/2,
-  state_name/3,
+  left_bank/3,
+  right_bank/3,
+  complete/3,
   handle_event/4,
   terminate/3,
   code_change/4
@@ -37,11 +42,15 @@
 %% initialize. To ensure a synchronized start-up procedure, this
 %% function does not return until Module:init/1 has returned.
 %%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec(start_link() -> {ok, pid()} | ignore | {error, term()}).
 start_link() ->
   gen_statem:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+replay_move() ->
+  gen_statem:cast(?SERVER, move).
+
 
 %%%===================================================================
 %%% gen_statem callbacks
@@ -54,14 +63,16 @@ start_link() ->
 %% gen_statem:start_link/[3,4], this function is called by the new
 %% process to initialize.
 %%
-%% @spec init(Args) -> {CallbackMode, StateName, State} |
-%%                     {CallbackMode, StateName, State, Actions} |
-%%                     ignore |
-%%                     {stop, StopReason}
 %% @end
 %%--------------------------------------------------------------------
+-spec(init(gen_statem:state()) -> {ok, gen_statem:state_name(), gen_statem:state()}).
 init([]) ->
-  {ok, state_name, #state{}}.
+  InitialData = application:get_env(?APP, initial_state, #state{}),
+  InitialState = case string:str(InitialData#state.left_bank, "f") > 0 of
+    true -> left_bank;
+    _ -> right_bank
+  end,
+  {ok, InitialState, InitialData}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -111,9 +122,24 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %%                   {keep_state_and_data, Actions}
 %% @end
 %%--------------------------------------------------------------------
-state_name(_EventType, _EventContent, State) ->
-  NextStateName = next_state,
-  {next_state, NextStateName, State}.
+left_bank(cast, move, Data) ->
+  io:format("Welcome to the Left Bank~n"),
+  {NextStateName, NewData} = do_move(Data),
+  io:format("~p ~p~n", [NextStateName, NewData]),
+  replay_move(),
+  {next_state, NextStateName, NewData}.
+
+right_bank(cast, move, Data) ->
+  io:format("Welcome to the Right Bank~n"),
+  {NextStateName, NewData} = do_move(Data),
+  io:format("~p ~p~n", [NextStateName, NewData]),
+  replay_move(),
+  {next_state, NextStateName, NewData}.
+
+complete(cast, move, Data) ->
+  print_river(Data),
+  application:stop(?APP),
+  {next_state, complete, Data}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -154,7 +180,6 @@ handle_event(_EventType, _EventContent, _StateName, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, _State) ->
-  io:format("STOPPING STATEM~n"),
   ok.
 
 %%--------------------------------------------------------------------
@@ -172,3 +197,54 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+do_move(
+    #state{
+      left_bank = Left,
+      right_bank = Right,
+      moves = Moves} = Data) ->
+  {NextState, NewData} =
+    case Moves of
+      [] ->
+        {complete, Data};
+      Moves when is_list(Moves) ->
+        {Next, NewLeft, NewRight, Rest} = cross_river(Left, Right, Moves),
+        {Next, Data#state{
+          left_bank = NewLeft,
+          right_bank = NewRight,
+          moves = Rest
+        }}
+    end,
+  {NextState, NewData}.
+
+cross_river(Left, Right, [Move|Rest]) ->
+  case string:str(Move, "<") > 0 of
+    true ->
+      Items = Move -- "<",
+      {left_bank, Left ++ Items, Right -- Items, Rest};
+    _ ->
+      Items = Move -- ">",
+      {right_bank, Left -- Items, Right ++ Items, Rest}
+  end.
+
+check_anything_eaten(Items,
+    #state{eaters = Eaters,
+           names = Names}) ->
+    lists:foldl(fun(Key, Acc) ->
+      Eaten = maps:get(Key, Eaters),
+      case lists:member(Key, Items) and lists:member(Eaten, Items) of
+        true -> maps:get(Eaten, Names);
+        _ -> Acc
+      end
+      end, [], maps:keys(Eaters)).
+
+print_river(
+    #state{
+      left_bank = Left,
+      right_bank = Right,
+      eaten = Eaten}) ->
+  io:format("~s~~~s~n", [Left, Right]),
+  case Eaten of
+    [] -> ok;
+    Eaten -> io:format("~s was eaten.", [Eaten])
+  end.

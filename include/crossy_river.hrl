@@ -13,5 +13,6 @@
   names      = #{} :: map(),
   eaters     = #{} :: map(),
   moves      = [] :: list(),
-  solve      = false :: boolean()
+  solve      = false :: boolean(),
+  eaten      = [] :: list()
 }).

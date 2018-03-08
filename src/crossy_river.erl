@@ -24,8 +24,13 @@ main() ->
   Args = init:get_plain_arguments(),
   Result = configure(Args),
   case Result of
-    ok -> ok = application:start(?APP);
-    _ -> ok
+    ok ->
+      ok = application:start(?APP),
+      crossy_river_statem:replay_move(),
+    timer:sleep(10);
+     %[crossy_river_statem:replay_move() || _ <- lists:seq(1,10)];
+    _ ->
+      ok
   end,
   ok.
 
