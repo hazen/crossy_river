@@ -10,10 +10,14 @@
 -behaviour(gen_statem).
 
 %% API
+-ifdef(EUNIT).
+-compile(export_all).
+-else.
 -export([
   start_link/0,
   replay_move/0
 ]).
+-endif.
 
 %% gen_statem callbacks
 -export([
@@ -232,7 +236,7 @@ check_anything_eaten(Items,
            names = Names}) ->
     lists:foldl(fun(Key, Acc) ->
       Eaten = maps:get(Key, Eaters),
-      case lists:member(Key, Items) and lists:member(Eaten, Items) of
+      case lists:member(hd(Key), Items) and lists:member(hd(Eaten), Items) and not lists:member($f, Items) of
         true -> maps:get(Eaten, Names);
         _ -> Acc
       end
