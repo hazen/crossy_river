@@ -7,12 +7,16 @@
 %%%-------------------------------------------------------------------
 
 -define(APP, crossy_river).
+-define(STATEM, crossy_river_statem).
+
 -record(state, {
-  left_bank  = [] :: list(),
-  right_bank = [] :: list(),
-  names      = #{} :: map(),
-  eaters     = #{} :: map(),
-  moves      = [] :: list(),
-  solve      = false :: boolean(),
-  eaten      = [] :: list()
+  left_bank      = [] :: list(),
+  right_bank     = [] :: list(),
+  names          = #{} :: map(),
+  eaters         = #{} :: map(),
+  eaten          = [] :: list(),
+  moves          = [] :: list(),
+  possible_moves = [] :: list(),
+  success_moves  = [] :: list(),
+  solve          = false :: boolean()
 }).

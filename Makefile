@@ -10,6 +10,9 @@ compile:
 clean:
 	$(REBAR) clean
 
+squeaky:
+	rm -rf _build
+
 test: compile
 	$(REBAR) eunit
 

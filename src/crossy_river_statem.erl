@@ -143,10 +143,10 @@ left_bank(cast, move, Data) ->
   replay_move(),
   {next_state, NextStateName, NewData};
 left_bank(cast, solve, Data) ->
-  {NextStateName, NewData} = do_move(Data),
-  io:format("~p ~p~n", [NextStateName, NewData]),
-  replay_move(),
-  {next_state, NextStateName, NewData}.
+  NewData = attempt_move(Data),
+  {NextStateName, NewData1} = do_move(NewData),
+  io:format("~p ~p~n", [NextStateName, NewData1]),
+  {next_state, NextStateName, NewData1}.
 
 right_bank(cast, move, Data) ->
   {NextStateName, NewData} = do_move(Data),
@@ -154,10 +154,10 @@ right_bank(cast, move, Data) ->
   replay_move(),
   {next_state, NextStateName, NewData};
 right_bank(cast, solve, Data) ->
-  {NextStateName, NewData} = do_move(Data),
-  io:format("~p ~p~n", [NextStateName, NewData]),
-  replay_move(),
-  {next_state, NextStateName, NewData}.
+  NewData = attempt_move(Data),
+  {NextStateName, NewData1} = do_move(NewData),
+  io:format("~p ~p~n", [NextStateName, NewData1]),
+  {next_state, NextStateName, NewData1}.
 
 eaten(cast, move, Data) ->
   print_river(Data),
@@ -272,6 +272,12 @@ determine_new_state(Left, Right, Data, Default) ->
       _ -> eaten
     end}.
 
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Determine if anything on this riverbank will eat anything else.
+%% Return an empty list if not, or the name of the victim, if so.
+%%--------------------------------------------------------------------
+
 -spec(check_anything_eaten(list(), #state{}) -> list()).
 check_anything_eaten(Items,
     #state{eaters = Eaters,
@@ -294,3 +300,127 @@ print_river(
     [] -> ok;
     Eaten -> io:format("~s was eaten.~n", [Eaten])
   end.
+
+%% Everything has been moved off of the left bank, so complete
+attempt_move(#state{left_bank = []} = Data) ->
+  Data#state{moves = []};
+
+attempt_move(
+    #state{
+      possible_moves = Possible,
+      success_moves = Success} = Data) ->
+  LastMove = last_move(Success),
+  case length(Possible) == length(Success) of
+    %% New round, so generate new moves
+    true ->
+      [Move|MoreMoves] = generate_possible_moves(LastMove, Data),
+      Data#state{
+        moves = [Move],
+        possible_moves = [MoreMoves|Possible],
+        success_moves = [Move|Success]
+      };
+    %% Retrying a previous round, so use an existing one
+    _ ->
+      [ThisRound|OtherRounds] = Possible,
+      case ThisRound of
+        %% Out of options, so move back to a previous round
+        [] -> undo_move(
+          Data#state{
+            possible_moves = OtherRounds
+          });
+        [Move|MoreMoves] ->
+          Data#state{
+            moves = [Move],
+            possible_moves = [MoreMoves|OtherRounds],
+            success_moves = [Move|Success]
+          }
+      end
+  end.
+
+%%%% Nothing in the queue, so start from scratch
+%%attempt_move(
+%%    #state{
+%%      possible_moves = [],
+%%      success_moves = Success} = Data) ->
+%%  [Move|Possible] = generate_possible_moves([], Data),
+%%  Data#state{
+%%    moves = [Move],
+%%    possible_moves = [Possible],
+%%    success_moves = [Move|Success]
+%%  };
+%%
+%%%% No more possible moves for this round, so backtrack
+%%attempt_move(
+%%    #state{possible_moves = [[]|Previous]} = Data) ->
+%%  undo_move(
+%%  Data#state{
+%%    possible_moves = [Previous]
+%%  });
+%%
+%%%% Try another move in the current round
+%%attempt_move(
+%%    #state{
+%%      possible_moves = [Current|Previous],
+%%      success_moves = Success} = Data) ->
+%%  [Move|Rest] = Current,
+%%  Data#state{
+%%    moves = [Move],
+%%    possible_moves = [Rest|Previous],
+%%    success_moves = [Move|Success]
+%%  }.
+
+undo_move(
+    #state{
+      success_moves = [Previous|Success]
+    } = Data) ->
+  Data#state{
+    moves = [reverse_move(Previous)],
+    success_moves = Success
+  }.
+
+last_move([]) -> [];
+last_move([Previous|_]) -> Previous.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Generate all possible moves from the current state, except for
+%% the opposite move of the move just made, to help prune loops.
+%%--------------------------------------------------------------------
+
+-spec(generate_possible_moves(list(), #state{}) -> list()).
+generate_possible_moves(
+    Previous,
+    #state{
+      left_bank = Left,
+      right_bank = Right} = _Data) ->
+  Reverse = reverse_move(Previous),
+  case lists:member($f, Left) of
+    true ->
+      lists:foldl(
+        fun($f, Acc) ->
+          ["f>"|Acc];
+        (X, Acc) ->
+          [lists:flatten(io_lib:format("f~s>", [[X]]))|Acc]
+        end, [], Left);
+    _ ->
+      lists:foldl(
+        fun($f, Acc) ->
+          ["<f"|Acc];
+        (X, Acc) ->
+          [lists:flatten(io_lib:format("<f~s", [[X]]))|Acc]
+        end, [], Right)
+  end -- [Reverse].
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Generate an opposite move to the one supplied
+%%--------------------------------------------------------------------
+
+-spec reverse_move(list()) -> list().
+reverse_move([]) -> [];
+reverse_move([$<|Left]) ->
+  lists:flatten(io_lib:format("~s>", [Left]));
+reverse_move(Right) ->
+  [_|Rest] = lists:reverse(Right),
+  lists:flatten(io_lib:format("<~s", [lists:reverse(Rest)])).
+

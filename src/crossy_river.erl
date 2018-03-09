@@ -19,18 +19,18 @@
 -spec(main() -> ok).
 main() ->
   %% Set up the initial state of the application
-
-
   Args = init:get_plain_arguments(),
   Result = configure(Args),
   case Result of
-    ok ->
+    %% if there is a problem, don't bother starting
+    error -> ok;
+    State ->
+      application:set_env(?APP, initial_state, State, [{persistent, true}]),
       ok = application:start(?APP),
-      crossy_river_statem:replay_move(),
-    timer:sleep(10);
-     %[crossy_river_statem:replay_move() || _ <- lists:seq(1,10)];
-    _ ->
-      ok
+      launch(State),
+
+      %% Test 10 times for the statem to complete, otherwise die
+      wait_for_completion([], 10)
   end,
   ok.
 
@@ -39,7 +39,7 @@ main() ->
 %% @doc Read the optional configuration files
 %%--------------------------------------------------------------------
 
--spec(configure([string()]) -> ok | error).
+-spec(configure([string()]) -> #state{} | error).
 configure(["<default>", "<default>", "false"]) ->
   io:format(standard_error, "No configuration specified~n", []),
   error;
@@ -50,19 +50,37 @@ configure([Replay, Custom, Solve]) ->
   [Initial|Moves] = setup_replay_state(Replay),
   {Names, Eaters} = setup_items(Custom),
   {Left, Right} = state_to_bank(Initial),
-  State = #state{
+  #state{
     left_bank = Left,
     right_bank = Right,
     moves = Moves,
     names = Names,
     eaters = Eaters,
     solve = list_to_atom(Solve)
-  },
-  application:set_env(?APP, initial_state, State, [{persistent, true}]),
-  ok;
+  };
 configure(Bad) ->
   io:format(standard_error, "Bad configuration ~p~n", Bad),
   error.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Launch the statem with the correct configuration
+%%--------------------------------------------------------------------
+-spec(launch(#state{}) -> ok).
+launch(#state{solve = true}) -> crossy_river_statem:solve();
+launch(_) -> crossy_river_statem:replay_move().
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Wait until the FSM is in a completed state by retrying N times
+%%--------------------------------------------------------------------
+-spec(wait_for_completion(gen_statem:state(), integer()) -> ok).
+wait_for_completion({complete, _}, _) -> ok;
+wait_for_completion({eaten, _}, _) -> ok;
+wait_for_completion(_, 0) ->  ok;
+wait_for_completion(_, N) when is_integer(N) ->
+  timer:sleep(1000),
+  wait_for_completion(sys:get_state(?STATEM), N-1).
 
 %%--------------------------------------------------------------------
 %% @private
