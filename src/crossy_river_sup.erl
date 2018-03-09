@@ -40,8 +40,8 @@ init([]) ->
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
 
-    Restart = temporary,
-    Shutdown = 2000,
+    Restart = temporary, %% Don't bother to restart. It's just a game.
+    Shutdown = 1000,
     Type = worker,
 
     Worker = {crossy_river_id, {crossy_river_statem, start_link, []},

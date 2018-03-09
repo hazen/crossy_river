@@ -1,5 +1,5 @@
 {application, crossy_river,
- [{description, "An OTP application"},
+ [{description, "An application of getting to the other side"},
   {vsn, "0.1.0"},
   {registered, []},
   {mod, { crossy_river_app, []}},

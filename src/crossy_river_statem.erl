@@ -2,7 +2,25 @@
 %%% @author Brett Hazen
 %%% @copyright (C) 2018
 %%% @doc
+%%% State machine to model moving items across a river.
 %%%
+%%% Four states are modelled:
+%%% - Boat on the Left Bank
+%%% - Boat on the Right Bank
+%%% - Something ate something else
+%%% - Completed journey
+%%%
+%%% There are two main modes of operation for the state machine:
+%%% - Replay prerecorded actions (from a file).  This mode uses the
+%%%   "move" action.
+%%% - Solver: Discover a correct series of moves to transfer all items
+%%%   from the left bank of the river to the right one. This mode uses
+%%%   the "solve" action.
+%%%
+%%% Note: The FSM state is referred to as "state" whereas the data
+%%% associated with the OTP behaviour is a record called "state", by
+%%% convention, but is referred to as "Data" as much as possible.
+%%% States and state machines. ¯\_(ツ)_/¯
 %%% @end
 %%%-------------------------------------------------------------------
 -module(crossy_river_statem).
@@ -137,6 +155,7 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %%                   {keep_state_and_data, Actions}
 %% @end
 %%--------------------------------------------------------------------
+
 left_bank(cast, move, Data) ->
   {NextStateName, NewData} = do_move(Data),
   replay_move(),
@@ -231,6 +250,18 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Process the action of moving the farmer and some items from one bank
+%% to the other.  Basically a move is taken off the `moves` list and
+%% the items are transferred from one bank to the other.
+%%
+%% When there are no other moves left, we are complete.
+%% @end
+%%--------------------------------------------------------------------
+
+-spec(do_move(#state{}) -> {gen_statem:state(), #state{}}).
 do_move(
     #state{
       left_bank = Left,
@@ -245,6 +276,18 @@ do_move(
     end,
   {NextState, NewData}.
 
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Take the items from one side of the river and move it to the other.
+%% The new state (typically the other bank) is also specified, but
+%% can also be be the `eaten` state if something ate something else
+%% after the move.
+%% @end
+%%--------------------------------------------------------------------
+
+-spec(cross_river(list(), list(), #state{}) -> {gen_statem:state(), #state{}}).
 cross_river(Left, Right, #state{moves = [Move|Rest]} = Data) ->
   {LeftBank, RightBank, Eaten, NewState} = case string:str(Move, "<") > 0 of
     true ->
@@ -261,6 +304,15 @@ cross_river(Left, Right, #state{moves = [Move|Rest]} = Data) ->
     moves = Rest
   }}.
 
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Determine the next state and specifically see if anything was eaten
+%% on either side of the river.
+%% @end
+%%--------------------------------------------------------------------
+
 -spec(determine_new_state(Left :: list(),
     Right :: list(),
     Data :: #state{},
@@ -275,8 +327,12 @@ determine_new_state(Left, Right, Data, Default) ->
 
 %%--------------------------------------------------------------------
 %% @private
-%% @doc Determine if anything on this riverbank will eat anything else.
+%% @doc
+%% Determine if anything on this riverbank will eat anything else.
 %% Return an empty list if not, or the name of the victim, if so.
+%% The rules of what eats what as well as the eaten names are taken
+%% from the #state{} record.
+%% @end
 %%--------------------------------------------------------------------
 
 -spec(check_anything_eaten(list(), #state{}) -> list()).
@@ -291,6 +347,16 @@ check_anything_eaten(Items,
       end
       end, [], maps:keys(Eaters)).
 
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Take the two bank fields and print out the compact state string which
+%% is comprised of a single letter for each actor and ~ for the river.
+%% Also if something was eaten along the way, write out what it was.
+%% @end
+%%--------------------------------------------------------------------
+
+-spec(print_river(#state{}) -> ok).
 print_river(
     #state{
       left_bank = Left,
@@ -306,17 +372,42 @@ print_river(
 %%% Solver functions
 %%%===================================================================
 
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Try a variety of moves to determine a success path.  If everything
+%% has moved from the left bank to the right, then we have succeeded.
+%%
+%% Three record fields are critical to tracking the progress of attempted
+%% river crossings:
+%% - `possible_moves` - List of lists of possible moves.  The most recent
+%%   rounds are towards the front of the list.
+%% - `success_moves` - Reversed list of crossings so far.  The most current
+%%   one is at the front of the list.
+%% - `moves` - List of moves to apply to the FSM.  In the Solver mode, this
+%%   is only a single move at a time.
+%%
+%% If all moves for a particular round prove unsuccessful, then one sublist
+%% in `possible_moves` is removed and the remaining moves of the previous
+%% round are attempted.
+%% @end
+%%--------------------------------------------------------------------
+
+-spec(attempt_move(#state{}) -> #state{}).
+
 %% Everything has been moved off of the left bank, so complete
 attempt_move(#state{left_bank = []} = Data) ->
   Data#state{moves = []};
 
+%% Try new states depending on if all options have been exhausted or not
+%% Update the state to reflect the move.
 attempt_move(
     #state{
       possible_moves = Possible,
       success_moves = Success} = Data) ->
   LastMove = last_move(Success),
   case length(Possible) == length(Success) of
-    %% New round, so generate new moves
+    %% New round, so generate new possible moves
     true ->
       [Move|MoreMoves] = generate_possible_moves(LastMove, Data),
       Data#state{
@@ -333,6 +424,7 @@ attempt_move(
           Data#state{
             possible_moves = OtherRounds
           });
+        %% Still some options to try from the previous round
         [Move|MoreMoves] ->
           Data#state{
             moves = [Move],
@@ -344,8 +436,10 @@ attempt_move(
 
 %%--------------------------------------------------------------------
 %% @private
-%% @doc Take the last move from the list of successful moves and issue
+%% @doc
+%% Take the last move from the list of successful moves and issue
 %% the opposite move to get back to the previous state.
+%% @end
 %%--------------------------------------------------------------------
 
 -spec(undo_move(#state{}) -> #state{}).
@@ -360,8 +454,10 @@ undo_move(
 
 %%--------------------------------------------------------------------
 %% @private
-%% @doc Get the previous move from a list of moves. Empty list returns
+%% @doc
+%% Get the previous move from a list of moves. Empty list returns
 %% the empty list.
+%% @end
 %%--------------------------------------------------------------------
 
 -spec(last_move(list()) -> list()).
@@ -370,8 +466,10 @@ last_move([Previous|_]) -> Previous.
 
 %%--------------------------------------------------------------------
 %% @private
-%% @doc Generate all possible moves from the current state, except for
+%% @doc
+%% Generate all possible moves from the current state, except for
 %% the opposite move of the move just made, to help prune loops.
+%% @end
 %%--------------------------------------------------------------------
 
 -spec(generate_possible_moves(list(), #state{}) -> list()).
@@ -400,7 +498,10 @@ generate_possible_moves(
 
 %%--------------------------------------------------------------------
 %% @private
-%% @doc Generate an opposite move to the one supplied
+%% @doc
+%% Generate an opposite move to the one supplied, i.e., move in the
+%% opposite direction
+%% @end
 %%--------------------------------------------------------------------
 
 -spec reverse_move(list()) -> list().
@@ -410,4 +511,3 @@ reverse_move([$<|Left]) ->
 reverse_move(Right) ->
   [_|Rest] = lists:reverse(Right),
   lists:flatten(io_lib:format("<~s", [lists:reverse(Rest)])).
-

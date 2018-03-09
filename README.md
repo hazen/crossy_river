@@ -38,7 +38,7 @@ Sample Output 2:
 fd~cg
 Grain was eaten.
 ```
-
+##### *N.B.* Developed with rebar 3.5.0 on Erlang/OTP 20 Erts 9.2.1
 ### Running
 
 Once the project has been built with `rebar3 compile`, use the included shell
@@ -78,7 +78,7 @@ This allows for completely different scenarios to be attempted.
 
 #### Automatic solving
 
-Finally the `-s` flag means to allow the program to successfully move everything
+Finally the `-s` flag automatically solves the steps to move everything
 from the left riverbank to the other successfully, i.e., nothing gets eaten and
 the attempted series of moves is returned.  It is assumed that everything starts
 on the left bank and is trying to cross the river to the right.
@@ -105,6 +105,14 @@ $ bin/crossy_river -r samples/replay3 -c samples/custom1
 - Item is eaten with a modified customization file
 ```bash
 $ bin/crossy_river -r samples/replay4 -c samples/custom2
+```
+- Autosolve the default dog, chicken, grain problem and return the steps
+```bash
+$ bin/crossy_river -s
+```
+- Autosolve the custom ant, spider, bird problem and return the steps
+```bash
+$ bin/crossy_river -r samples/replay4 -c samples/custom2 -s
 ```
 
 #### Testing

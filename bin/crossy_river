@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Script to convert command-line options into Erlang arguments
 
 export SOLVE=false
 export REPLAY="<default>"
