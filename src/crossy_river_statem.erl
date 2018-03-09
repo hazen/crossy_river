@@ -139,37 +139,38 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %%--------------------------------------------------------------------
 left_bank(cast, move, Data) ->
   {NextStateName, NewData} = do_move(Data),
-  io:format("~p ~p~n", [NextStateName, NewData]),
   replay_move(),
   {next_state, NextStateName, NewData};
 left_bank(cast, solve, Data) ->
   NewData = attempt_move(Data),
   {NextStateName, NewData1} = do_move(NewData),
-  io:format("~p ~p~n", [NextStateName, NewData1]),
+  solve(),
   {next_state, NextStateName, NewData1}.
 
 right_bank(cast, move, Data) ->
   {NextStateName, NewData} = do_move(Data),
-  io:format("~p ~p~n", [NextStateName, NewData]),
   replay_move(),
   {next_state, NextStateName, NewData};
 right_bank(cast, solve, Data) ->
   NewData = attempt_move(Data),
   {NextStateName, NewData1} = do_move(NewData),
-  io:format("~p ~p~n", [NextStateName, NewData1]),
+  solve(),
   {next_state, NextStateName, NewData1}.
 
 eaten(cast, move, Data) ->
   print_river(Data),
   {next_state, eaten, Data};
 eaten(cast, solve, Data) ->
-  print_river(Data),
-  {next_state, eaten, Data}.
+  NewData = undo_move(Data),
+  {NextStateName, NewData1} = do_move(NewData),
+  solve(),
+  {next_state, NextStateName, NewData1}.
 
 complete(cast, move, Data) ->
   print_river(Data),
   {next_state, complete, Data};
-complete(cast, solve, Data) ->
+complete(cast, solve, #state{success_moves = Moves} = Data) ->
+  io:format("~s~n", [string:join(lists:reverse(Moves), "\n")]),
   print_river(Data),
   {next_state, complete, Data}.
 
@@ -301,6 +302,10 @@ print_river(
     Eaten -> io:format("~s was eaten.~n", [Eaten])
   end.
 
+%%%===================================================================
+%%% Solver functions
+%%%===================================================================
+
 %% Everything has been moved off of the left bank, so complete
 attempt_move(#state{left_bank = []} = Data) ->
   Data#state{moves = []};
@@ -337,38 +342,13 @@ attempt_move(
       end
   end.
 
-%%%% Nothing in the queue, so start from scratch
-%%attempt_move(
-%%    #state{
-%%      possible_moves = [],
-%%      success_moves = Success} = Data) ->
-%%  [Move|Possible] = generate_possible_moves([], Data),
-%%  Data#state{
-%%    moves = [Move],
-%%    possible_moves = [Possible],
-%%    success_moves = [Move|Success]
-%%  };
-%%
-%%%% No more possible moves for this round, so backtrack
-%%attempt_move(
-%%    #state{possible_moves = [[]|Previous]} = Data) ->
-%%  undo_move(
-%%  Data#state{
-%%    possible_moves = [Previous]
-%%  });
-%%
-%%%% Try another move in the current round
-%%attempt_move(
-%%    #state{
-%%      possible_moves = [Current|Previous],
-%%      success_moves = Success} = Data) ->
-%%  [Move|Rest] = Current,
-%%  Data#state{
-%%    moves = [Move],
-%%    possible_moves = [Rest|Previous],
-%%    success_moves = [Move|Success]
-%%  }.
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Take the last move from the list of successful moves and issue
+%% the opposite move to get back to the previous state.
+%%--------------------------------------------------------------------
 
+-spec(undo_move(#state{}) -> #state{}).
 undo_move(
     #state{
       success_moves = [Previous|Success]
@@ -378,6 +358,13 @@ undo_move(
     success_moves = Success
   }.
 
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Get the previous move from a list of moves. Empty list returns
+%% the empty list.
+%%--------------------------------------------------------------------
+
+-spec(last_move(list()) -> list()).
 last_move([]) -> [];
 last_move([Previous|_]) -> Previous.
 
